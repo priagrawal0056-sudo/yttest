@@ -1,0 +1,115 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  YouTube Agent — autonomous video pipeline
+#
+#  Runs the full agent (research → script → narration → images → render →
+#  upload) on a daily schedule with zero human interaction:
+#    • AUTO_APPROVE=true skips the interactive review dashboard
+#    • YouTube OAuth creds are restored from base64 repo secrets (if present)
+#    • The rendered video + script are always kept as workflow artifacts,
+#      even when upload credentials are not configured yet.
+#
+#  Required repo secrets:
+#    GEMINI_API_KEY          — free key from aistudio.google.com/apikey
+#    PEXELS_API_KEY          — free key from pexels.com/api
+#  Optional repo secrets (needed for the upload step):
+#    YT_CLIENT_SECRET_B64    — base64 -w0 client_secret.json
+#    YT_TOKEN_PICKLE_B64     — base64 -w0 youtube_token.pickle (generated once
+#                              locally after first interactive sign-in)
+# ─────────────────────────────────────────────────────────────────────────────
+name: YouTube Agent — Autonomous Video Pipeline
+
+on:
+  schedule:
+    # Daily at 14:30 UTC (≈10:30 AM US Eastern) so the video is indexed
+    # and ready before the US evening viewing peak.
+    - cron: "30 14 * * *"
+  # Manual trigger: Actions tab → this workflow → "Run workflow"
+  workflow_dispatch:
+
+concurrency:
+  group: youtube-agent
+  cancel-in-progress: false   # never kill a render in progress
+
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    name: "Agent: research → script → narrate → render → upload"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      AUTO_APPROVE: "true"                              # skip review dashboard
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      # Set a repo *variable* VIDEO_PRIVACY=unlisted to soft-launch safely.
+      VIDEO_PRIVACY: ${{ vars.VIDEO_PRIVACY || 'public' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system dependencies (ffmpeg + DejaVu fonts)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Preflight — check configuration
+        env:
+          HAS_GEMINI: ${{ secrets.GEMINI_API_KEY != '' && 'yes' || 'no' }}
+          HAS_PEXELS: ${{ secrets.PEXELS_API_KEY != '' && 'yes' || 'no' }}
+          HAS_OAUTH: ${{ secrets.YT_CLIENT_SECRET_B64 != '' && 'yes' || 'no' }}
+          HAS_TOKEN: ${{ secrets.YT_TOKEN_PICKLE_B64 != '' && 'yes' || 'no' }}
+        run: |
+          echo "GEMINI_API_KEY : $HAS_GEMINI"
+          echo "PEXELS_API_KEY : $HAS_PEXELS"
+          echo "YouTube OAuth  : $HAS_OAUTH"
+          echo "YouTube token  : $HAS_TOKEN"
+          if [ "$HAS_GEMINI" != "yes" ] || [ "$HAS_PEXELS" != "yes" ]; then
+            echo "::error::Missing GEMINI_API_KEY / PEXELS_API_KEY secrets — add them in Settings → Secrets."
+            exit 1
+          fi
+          if [ "$HAS_OAUTH" != "yes" ] || [ "$HAS_TOKEN" != "yes" ]; then
+            echo "::warning::YouTube OAuth secrets not set — the video will be rendered and saved as an artifact, but not uploaded."
+          fi
+
+      - name: Restore YouTube OAuth credentials (if configured)
+        env:
+          YT_CLIENT_SECRET_B64: ${{ secrets.YT_CLIENT_SECRET_B64 }}
+          YT_TOKEN_PICKLE_B64: ${{ secrets.YT_TOKEN_PICKLE_B64 }}
+        run: |
+          if [ -n "$YT_CLIENT_SECRET_B64" ]; then
+            echo "$YT_CLIENT_SECRET_B64" | base64 -d > client_secret.json
+            echo "Restored client_secret.json"
+          fi
+          if [ -n "$YT_TOKEN_PICKLE_B64" ]; then
+            echo "$YT_TOKEN_PICKLE_B64" | base64 -d > youtube_token.pickle
+            echo "Restored youtube_token.pickle"
+          fi
+
+      - name: Run autonomous agent pipeline
+        run: python pipeline.py
+
+      - name: Upload video artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-run-${{ github.run_id }}
+          path: |
+            output/final_video.mp4
+            output/thumbnail.jpg
+            output/script.json
+            output/research.json
+            output/review_data.json
+          retention-days: 14
+          if-no-files-found: warn
