@@ -107,6 +107,7 @@ jobs:
           name: video-run-${{ github.run_id }}
           path: |
             output/final_video.mp4
+            output/thumbnail.jpg
             output/script.json
             output/research.json
             output/review_data.json

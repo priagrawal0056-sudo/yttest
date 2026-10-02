@@ -37,9 +37,10 @@ def _get_service():
     return build("youtube", "v3", credentials=creds)
 
 
-def upload_to_youtube(script: dict, video_path: str) -> str:
+def upload_to_youtube(script: dict, video_path: str, thumbnail_path: str = None) -> str:
     """
-    Uploads the video with auto-generated title, description, and tags.
+    Uploads the video with auto-generated title, description, and tags,
+    then attaches the custom thumbnail if one was rendered.
     Returns the public YouTube URL.
     """
     youtube = _get_service()
@@ -88,4 +89,18 @@ def upload_to_youtube(script: dict, video_path: str) -> str:
 
     print()
     video_id = response["id"]
+
+    # ── Custom thumbnail (non-fatal) ─────────────────────────
+    if thumbnail_path and os.path.exists(thumbnail_path):
+        try:
+            youtube.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(thumbnail_path, mimetype="image/jpeg"),
+            ).execute()
+            print("   ✅ Custom thumbnail set")
+        except Exception as e:
+            print(f"   ⚠ Thumbnail upload skipped: {e}")
+            print("     Tip: verify the channel's phone number in YouTube "
+                  "Studio to enable custom thumbnails.")
+
     return f"https://www.youtube.com/watch?v={video_id}"

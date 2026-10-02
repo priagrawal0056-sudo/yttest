@@ -18,6 +18,7 @@ from agents.scriptwriter import write_script
 from video.narrator      import generate_narration
 from video.stock         import download_images
 from video.creator       import create_video
+from video.thumbnail     import create_thumbnail
 from review.app          import start_review_server
 from uploader.youtube    import upload_to_youtube
 
@@ -70,6 +71,14 @@ def run():
     banner("5 / 6  ·  Building cinematic video  [MoviePy]")
     video_path = create_video(script, audio_path, config.OUTPUT_DIR, image_map)
 
+    # ── 5b. Thumbnail ─────────────────────────────────────────
+    banner("5b / 6  ·  Rendering custom thumbnail  [Pillow]")
+    thumbnail_path = None
+    try:
+        thumbnail_path = create_thumbnail(script, image_map, config.OUTPUT_DIR)
+    except Exception as e:
+        print(f"   ⚠ Thumbnail generation failed ({e}) — continuing without one.")
+
     # ── 6. Review ─────────────────────────────────────────────
     review_data = {
         "research":   research,
@@ -92,7 +101,7 @@ def run():
     if approved:
         banner("🚀  Uploading to YouTube")
         try:
-            url = upload_to_youtube(script, video_path)
+            url = upload_to_youtube(script, video_path, thumbnail_path)
             print(f"\n  🎉  Video live: {url}\n")
         except Exception as e:
             # In autonomous mode (GitHub Actions) a missing OAuth token must

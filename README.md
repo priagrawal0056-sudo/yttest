@@ -14,7 +14,8 @@ GitHub Actions (daily 14:30 UTC)
         ▼
   Research [Gemini] → Script [Gemini] → Images [Pexels]
         → Narration [Edge TTS] → Video render [MoviePy]
-        → Auto-approve → Upload [YouTube Data API]
+        → Thumbnail render [Pillow] → Auto-approve
+        → Upload + custom thumbnail [YouTube Data API]
 ```
 
 ---
@@ -36,6 +37,7 @@ maximise views quickly for this niche:
 | `BROLL_INTERVAL` | `7.0` (was 10) | More frequent visual change-ups = better attention/retention. |
 | `OVERLAY_OPACITY` | `0.55` (was 0.62) | Brighter frames keep viewers engaged; captions stay legible on their pill backgrounds. |
 | `VIDEO_CATEGORY_ID` | `27` (Education) | Correct shelf + advertiser-friendly. |
+| Thumbnail engine (`video/thumbnail.py`) | Auto-rendered 1280×720 cover: hero image + indigo channel badge + two-tone title (white headline, amber final line) — the highest-impact CTR pattern — uploaded with every video; non-fatal until the channel enables custom thumbnails. |
 
 > **One-click lever while the channel is new:** set the repo *variable*
 > `VIDEO_PRIVACY=unlisted` (Settings → Secrets and variables → Actions →
